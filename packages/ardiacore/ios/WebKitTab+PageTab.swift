@@ -109,6 +109,8 @@ extension WebKitTab: PageTab {
 
   var captureArea: NSView? { webView }
 
+  func evaluateInCaptureWorld(_ code: String, completion: @escaping (String?) -> Void) { evaluate(code, completion: completion) }
+
   func copyCapturePicture(_ completion: @escaping (CGImage?, NSRect) -> Void) {
     guard let view = webView, window != nil, !view.isHidden else { return completion(nil, .zero) }
     let frame = view.frame

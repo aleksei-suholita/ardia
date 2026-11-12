@@ -25,7 +25,7 @@ export type FieldProviderHint = { state: "shown" | "dismissed" };
 export type VerificationCodeFound = { token: string; app: string; main: boolean };
 export type CaptureResult = {
   outcome: "copied" | "cancelled" | "failed";
-  kind?: "area";
+  kind?: "element" | "area";
   width: number;
   height: number;
   ms: number;
