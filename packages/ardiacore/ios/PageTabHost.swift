@@ -8,6 +8,8 @@ class PageTabHost: ExpoView {
   var captureAreaObserver: NSObjectProtocol?
   var captureStarting = false
   var captureAttempt = 0
+  var fullPageAttempt: Int?
+  var fullPageRunning = false
   var captureStartedAt: CFTimeInterval = 0
   var pageCommittedAt: Double?
   private var propsReady = false

@@ -2,6 +2,9 @@
 #import <objc/runtime.h>
 
 static const NSTimeInterval kCapturePictureTimeout = 1.0;
+static const NSTimeInterval kFullPageMetricsTimeout = 2.0;
+static const NSTimeInterval kFullPagePictureTimeout = 20.0;
+static const double kFullPageMostPixels = 16384;
 static const NSTimeInterval kCaptureLookupTimeout = 1.0;
 static NSString *const kCaptureWorldName = @"ardia-capture";
 static char kCaptureWorldKey;
@@ -90,6 +93,41 @@ static id CaptureField(id object, NSString *key, Class kind) {
             objc_setAssociatedObject(strongSelf, &kCaptureWorldKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             [strongSelf evaluateInCaptureWorld:code completion:completion];
           }];
+}
+
+- (void)copyFullPagePicture:(void (^)(NSData *))completion {
+  ArdiaCoreTab *tab = _tab;
+  if (!tab) return completion(nil);
+  const double backing = self.window.backingScaleFactor ?: 2;
+  [tab devToolsCall:@"Page.getLayoutMetrics"
+             params:@{}
+            timeout:kFullPageMetricsTimeout
+         completion:^(NSDictionary *metrics, NSString *error) {
+           NSDictionary *css = CaptureField(metrics, @"cssContentSize", NSDictionary.class);
+           NSDictionary *device = CaptureField(metrics, @"contentSize", NSDictionary.class);
+           const double width = [CaptureField(css, @"width", NSNumber.class) doubleValue], height = [CaptureField(css, @"height", NSNumber.class) doubleValue];
+           if (!(width > 0 && height > 0)) return completion(nil);
+           const double devicePixels = [CaptureField(device, @"width", NSNumber.class) doubleValue];
+           const double pixelsPerCSS = devicePixels > 0 ? devicePixels / width : backing;
+           const double scale = MAX(1 / pixelsPerCSS, MIN(1, kFullPageMostPixels / (height * pixelsPerCSS)));
+           const double shown = MIN(height, floor(kFullPageMostPixels / (pixelsPerCSS * scale)));
+           NSDictionary *params = @{
+             @"format" : @"png",
+             @"captureBeyondViewport" : @YES,
+             @"fromSurface" : @YES,
+             @"clip" : @{@"x" : @0, @"y" : @0, @"width" : @(width), @"height" : @(shown), @"scale" : @(scale)},
+           };
+           [tab devToolsCall:@"Page.captureScreenshot"
+                      params:params
+                     timeout:kFullPagePictureTimeout
+                  completion:^(NSDictionary *shot, NSString *failure) {
+                    NSString *data = CaptureField(shot, @"data", NSString.class);
+                    if (!data) return completion(nil);
+                    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+                      completion([[NSData alloc] initWithBase64EncodedString:data options:0]);
+                    });
+                  }];
+         }];
 }
 
 @end

@@ -45,11 +45,11 @@ enum CaptureClipboard {
     return file.path
   }
 
-  static func copy(_ image: CGImage, points: NSSize, done: @escaping (Int?) -> Void) {
+  static func copy(_ image: CGImage, points: NSSize, if wanted: @escaping () -> Bool = { true }, done: @escaping (Int?) -> Void) {
     imageWork.async {
       let encoded = encode(image, points: points)
       DispatchQueue.main.async {
-        guard let encoded else { return done(nil) }
+        guard let encoded, wanted() else { return done(nil) }
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setData(encoded.png, forType: .png)

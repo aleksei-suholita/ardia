@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 import QuartzCore
 
 extension PageTabHost {
@@ -7,7 +8,7 @@ extension PageTabHost {
       endCapture()
       return false
     }
-    guard window != nil, !isHiddenOrHasHiddenAncestor, page.superview === self else { return false }
+    guard window != nil, !isHiddenOrHasHiddenAncestor, page.superview === self, !fullPageRunning else { return false }
     captureStarting = true
     captureAttempt += 1
     captureStartedAt = CACurrentMediaTime()
@@ -32,11 +33,60 @@ extension PageTabHost {
     return true
   }
 
+  func captureFullPage() -> Bool {
+    guard window != nil, !isHiddenOrHasHiddenAncestor, !fullPageRunning else { return false }
+    endCapture()
+    captureAttempt += 1
+    let attempt = captureAttempt
+    fullPageAttempt = attempt
+    fullPageRunning = true
+    captureStartedAt = CACurrentMediaTime()
+    let backing = window?.backingScaleFactor ?? 2
+    page.copyFullPage { [weak self] png in
+      CaptureClipboard.imageWork.async {
+        let image = png.flatMap { CGImageSourceCreateWithData($0 as CFData, nil) }.flatMap { CGImageSourceCreateImageAtIndex($0, 0, nil) }
+        DispatchQueue.main.async { self?.deliverFullPage(image, attempt: attempt, backing: backing) }
+      }
+    }
+    return true
+  }
+
+  private func deliverFullPage(_ image: CGImage?, attempt: Int, backing: CGFloat) {
+    guard fullPageAttempt == attempt, let image else {
+      fullPageRunning = false
+      if fullPageAttempt == attempt { endFullPage("failed") }
+      return
+    }
+    let points = NSSize(width: CGFloat(image.width) / backing, height: CGFloat(image.height) / backing)
+    CaptureClipboard.copy(image, points: points, if: { [weak self] in self?.fullPageAttempt == attempt }) { [weak self] capture in
+      guard let self else { return }
+      self.fullPageRunning = false
+      guard self.fullPageAttempt == attempt else { return }
+      if let capture {
+        self.endFullPage("copied", width: image.width, height: image.height, capture: capture)
+      } else {
+        self.endFullPage("failed")
+      }
+    }
+  }
+
+  private func endFullPage(_ outcome: String, width: Int = 0, height: Int = 0, capture: Int? = nil) {
+    fullPageAttempt = nil
+    sendCaptureEnding(outcome, kind: "page", width: width, height: height, capture: capture)
+  }
+
+  private func dropFullPage() {
+    guard fullPageAttempt != nil else { return }
+    endFullPage("cancelled")
+  }
+
   func notePageNavigation(_ payload: [String: Any]) {
     guard let committedAt = payload["committedAt"] as? Double else { return }
     let committedNewDocument = pageCommittedAt.map { $0 != committedAt } ?? false
     pageCommittedAt = committedAt
-    if committedNewDocument, captureOverlay != nil || captureStarting { endCapture() }
+    guard committedNewDocument else { return }
+    if captureOverlay != nil || captureStarting { endCapture() }
+    dropFullPage()
   }
 
   func endCapture() {

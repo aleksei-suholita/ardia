@@ -15,6 +15,7 @@ export type BrowserCommand =
   | "copyUrl"
   | "copyUrlAsMarkdown"
   | "capture"
+  | "captureFullPage"
   | "findInPage"
   | "findNext"
   | "findPrevious"

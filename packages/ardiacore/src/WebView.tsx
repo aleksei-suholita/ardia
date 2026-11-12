@@ -86,6 +86,7 @@ export function webViewHandle(native: { readonly current: WebViewNativeHandle | 
     sleepIfHidden: (seconds) => call<DiscardRefusal[]>([NO_PAGE_TO_DISCARD], (n) => n.sleepIfHidden(seconds)),
     setFrozen: (frozen) => call(undefined, (n) => n.setFrozen(frozen)),
     toggleCapture: () => call(false, (n) => n.toggleCapture()),
+    captureFullPage: () => call(false, (n) => n.captureFullPage()),
   };
 }
 

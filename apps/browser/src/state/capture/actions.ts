@@ -5,22 +5,66 @@ import { revealFile } from "../../platform/files";
 import { saveCaptureImage } from "../../platform/capture";
 import { displayHostOf } from "../../lib/url";
 import { currentEngineProfile, currentTab } from "../browser/current";
-import { showToast } from "../app/toasts";
+import { hideKeyedToast, showToast, useToasts } from "../app/toasts";
+import { useBrowser } from "../browser/store";
 import { consentToken, type ConsentToken } from "../telemetry/client";
 import { noteCaptureEnded, noteCaptureSaved, noteCaptureStarted } from "../telemetry/captureCounts";
 
 const TOAST_KEY = "capture";
 const startConsents = new Map<string, ConsentToken | null>();
+const consentKey = (tabId: string, wholePage: boolean) => (wholePage ? `${tabId} page` : tabId);
 
 export async function toggleCapture(tabId: string) {
   const consent = consentToken();
   const started = await webviews.get(tabId)?.toggleCapture().catch(() => false);
   if (!started) return;
   noteCaptureStarted(consent);
-  startConsents.set(tabId, consent);
+  startConsents.set(consentKey(tabId, false), consent);
 }
 
-const CAPTURE_COMMANDS = new Map<string, (tabId: string) => Promise<void>>([["capture", toggleCapture]]);
+const fullPageProgress = new Map<string, { windowId: string; pending: number }>();
+let watchingTabs = false;
+
+export async function captureFullPage(tabId: string) {
+  const tab = currentTab(tabId);
+  if (!tab) return;
+  const consent = consentToken();
+  showToast(tab.windowId, "Capturing the full page…", undefined, { icon: "doc.viewfinder", key: TOAST_KEY, sticky: true });
+  fullPageProgress.set(tabId, { windowId: tab.windowId, pending: (fullPageProgress.get(tabId)?.pending ?? 0) + 1 });
+  watchClosedTabs();
+  const started = await webviews.get(tabId)?.captureFullPage().catch(() => false);
+  if (!started) return endFullPageProgress(tabId);
+  noteCaptureStarted(consent);
+  startConsents.set(consentKey(tabId, true), consent);
+}
+
+function endFullPageProgress(tabId: string, every = false) {
+  const progress = fullPageProgress.get(tabId);
+  if (!progress) return;
+  if (!every && progress.pending > 1) return void (progress.pending -= 1);
+  fullPageProgress.delete(tabId);
+  if ([...fullPageProgress.values()].some((other) => other.windowId === progress.windowId)) return;
+  if (useToasts.getState().toasts[progress.windowId]?.sticky) hideKeyedToast(progress.windowId, TOAST_KEY);
+}
+
+function fullPagesStillComing(windowId: string) {
+  const left = [...fullPageProgress.values()].filter((progress) => progress.windowId === windowId).reduce((sum, progress) => sum + progress.pending, 0);
+  return left === 0 ? null : left === 1 ? "1 more page" : `${left} more pages`;
+}
+
+function watchClosedTabs() {
+  if (watchingTabs) return;
+  watchingTabs = true;
+  useBrowser.subscribeTo(["tabs"], (s, prev) => {
+    if (s.tabs === prev.tabs || !fullPageProgress.size) return;
+    for (const tabId of [...fullPageProgress.keys()]) if (!s.tabs[tabId]) endFullPageProgress(tabId, true);
+  });
+}
+
+const CAPTURE_COMMANDS = new Map<string, (tabId: string) => Promise<void>>([
+  ["capture", toggleCapture],
+  ["captureFullPage", captureFullPage],
+]);
 
 export function runCaptureCommand(command: string, tabId: string) {
   const run = CAPTURE_COMMANDS.get(command);
@@ -31,16 +75,23 @@ export function runCaptureCommand(command: string, tabId: string) {
 type CaptureToSave = { capture: number; windowId: string; profileId: string; url: string };
 
 export function captureEnded(tabId: string, result: CaptureResult) {
-  noteCaptureEnded(result, startConsents.get(tabId));
-  startConsents.delete(tabId);
+  const wholePage = result.kind === "page";
+  noteCaptureEnded(result, startConsents.get(consentKey(tabId, wholePage)));
+  startConsents.delete(consentKey(tabId, wholePage));
+  if (wholePage) endFullPageProgress(tabId);
   const tab = currentTab(tabId);
   if (!tab) return;
-  if (result.outcome === "failed") return showToast(tab.windowId, "Couldn't capture the page", undefined, { icon: "exclamationmark.triangle", key: TOAST_KEY });
+  const coming = fullPagesStillComing(tab.windowId);
+  const waiting = coming ? { sticky: true } : {};
+  if (result.outcome === "failed") {
+    return showToast(tab.windowId, "Couldn't capture the page", coming ? `Capturing ${coming}…` : undefined, { icon: "exclamationmark.triangle", key: TOAST_KEY, ...waiting });
+  }
   if (result.outcome !== "copied") return;
   const saving = result.capture === undefined ? null : { capture: result.capture, windowId: tab.windowId, profileId: tab.profileId, url: tab.url };
-  showToast(tab.windowId, "Capture copied", `${result.width} × ${result.height}`, {
+  showToast(tab.windowId, "Capture copied", `${result.width} × ${result.height}${coming ? ` · capturing ${coming}…` : ""}`, {
     icon: "camera.viewfinder",
     key: TOAST_KEY,
+    ...waiting,
     ...(saving ? { action: { title: "Save", run: () => void saveCapture(saving) } } : {}),
   });
 }

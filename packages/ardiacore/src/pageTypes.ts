@@ -25,7 +25,7 @@ export type FieldProviderHint = { state: "shown" | "dismissed" };
 export type VerificationCodeFound = { token: string; app: string; main: boolean };
 export type CaptureResult = {
   outcome: "copied" | "cancelled" | "failed";
-  kind?: "element" | "area";
+  kind?: "element" | "area" | "page";
   width: number;
   height: number;
   ms: number;
@@ -278,6 +278,7 @@ export type WebViewHandle = {
   navigationEntries(): Promise<NavigationEntry[]>;
   capturePicture(scale: number): Promise<{ data: string; frame: [number, number, number, number] } | null>;
   toggleCapture(): Promise<boolean>;
+  captureFullPage(): Promise<boolean>;
   downloadFavicon(url: string): Promise<FaviconImage | null>;
   downloadImage(url: string, maxPixels: number): Promise<FaviconImage | null>;
 

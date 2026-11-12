@@ -18,7 +18,7 @@ const { barActions } = await import("./src/state/omnibox/barActions.ts");
 const S = () => useBrowser.getState();
 S().hydrate({});
 const w = S().createWindow({ url: "https://a.example/" });
-const commands = ["capture"];
+const commands = ["capture", "captureFullPage"];
 console.log(JSON.stringify({
   unavailable: commands.filter((c) => UNAVAILABLE_COMMANDS.has(c)),
   bar: commands.filter((c) => barActions(S(), w).some((a) => a.id === c)),
@@ -32,12 +32,12 @@ function offered(platform) {
   return JSON.parse(run.stdout.trim().split("\n").at(-1));
 }
 
-test("the Mac offers Capture in the command bar", () => {
-  assert.deepEqual(offered(null), { unavailable: [], bar: ["capture"] });
+test("the Mac offers Capture and Capture Full Page in the command bar", () => {
+  assert.deepEqual(offered(null), { unavailable: [], bar: ["capture", "captureFullPage"] });
 });
 
 for (const platform of ["linux", "windows"]) {
-  test(`${platform} doesn't offer Capture, since its pages can't capture yet`, () => {
-    assert.deepEqual(offered(platform), { unavailable: ["capture"], bar: [] });
+  test(`${platform} doesn't offer Capture or Capture Full Page, since its pages can't capture yet`, () => {
+    assert.deepEqual(offered(platform), { unavailable: ["capture", "captureFullPage"], bar: [] });
   });
 }

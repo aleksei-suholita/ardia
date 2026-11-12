@@ -262,6 +262,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable NSView *)pageViewForCapture NS_SWIFT_NAME(pageViewForCapture());
 - (void)evaluateInCaptureWorld:(NSString *)code completion:(void (^)(NSString *_Nullable json))completion
     NS_SWIFT_NAME(evaluateInCaptureWorld(_:completion:));
+- (void)copyFullPagePicture:(void (^)(NSData *_Nullable png))completion NS_SWIFT_NAME(copyFullPagePicture(_:));
 @end
 
 @interface ArdiaWebView (Site)
